@@ -1,5 +1,65 @@
 # Work Management CRM
 
+## Owner-requested exception: remove per-item Details & Evidence — 14 November 2026
+
+- Remove the per-item Details & Evidence section entirely. Each expanded check shows its recorded value and only Matched / Revision choices, plus a short validation message when needed. Do not reintroduce source selectors, reference inputs, findings fields or advanced change buttons there.
+- Matched is an explicit manual attestation that saves directly. Bind it to appropriate real attachments automatically; use the open file when suitable or an unambiguous eligible attachment. Capture the displayed PDF page when actually known; otherwise record a manual-checkbox review reference, never an invented page or OCR result. Missing/ambiguous sources, missing required values, open revisions and final-review gates still block matching.
+- Confirm genuinely unsold/optional items as Not Applicable with a source-derived recorded reason when Matched is selected. Unchecking removes the current match and readiness without erasing first findings. Preserve signed date/version validation and role permissions.
+- Keep revision discussions, issue assessment and controlled Signed Order Change tools in the bottom correction workspace. Revision retains the existing Yes / No confirmation. This explicit owner exception supersedes the earlier instruction to keep a collapsed Details & Evidence area; the rest of the locked baseline remains unchanged.
+
+## Owner-requested exception to locked baseline: two checkbox outcomes — 14 November 2026
+
+- Each item now presents exactly two primary checkboxes: Matched and Revision. Keep references, findings, optional Not Applicable disposition and controlled signed-change tools in collapsed Details & Evidence; retain all backend evidence and signed-value protections.
+- Selecting Revision opens Are you sure? with Yes / No and Required Notes. No, Escape or cancellation restores the saved checkbox state and creates nothing. Only Yes creates that item's separate correction below and selects Revision from the saved open action. Duplicate open actions remain blocked.
+- A saved open revision disables Matched until Management resolves it. Selecting Matched requires the existing source/reference checks; missing evidence must not appear as a saved match. Preserve the compact correction conversations and every other locked layout and workflow rule.
+
+## Approved and locked: internal review and correction baseline — 14 November 2026
+
+- The owner approved the current internal Job Crossover review and compact Review Corrections section as final. Lock this baseline: do not redesign, rename, rearrange, expand or change its workflow without a subsequent explicit owner request. Routine maintenance must preserve the approved appearance, permissions and behaviour.
+- Preserve the seven exact section headings, 45 checklist prompts, dominant source viewer, scrolling attachments and dark Petrol Viewing selection. Preserve the approved front register separately.
+- Corrections remain compact full-width rows, one independent action per fix, with Section Attention, Rep Name, Admin Name, Date Raised, Resolved Date and Required Notes. Conversation expands for chronological Admin–Rep replies, evidence and preserved history. This supersedes the earlier large two-column correction cards.
+- Preserve Require Attention, Resolved and Update actions, awaiting-person status and Management authority. Rep access stays read only except their own assigned response and response-specific evidence. Management preview cannot submit as the rep.
+- Preserve the two-step Review Update / Confirm Update flow, exact before/after preview, explicit confirmation, cancellation invalidation and actor/revision/source/expiry-bound tokens. Never silently overwrite signed values; retain original versions, scores, evidence and acceptance requirements. Resolved or Updated does not automatically mark a check Matched, restore readiness or submit the job.
+- This approval locks the reviewed local implementation, not production readiness. Real rep login, production identity, external notifications and live source integrations remain pending. Reference `docs/CLIENT-CHECKLIST.md` and `docs/REVIEW-CORRECTIONS.md` for the approved scope.
+
+## Compact correction conversations and confirmed updates — 14 November 2026
+
+- Show corrections as compact full-width rows with Section Attention, Rep Name, Admin Name, Date Raised, Resolved Date and a one-line Required Notes summary. Expand Conversation for the full request, chronological Admin/Rep replies and response evidence. Preserve old replies and resolution history.
+- Management actions are Require Attention, Resolved and Update, with visible labels and icons. Require Attention records a reason, reopens the action and removes its old readiness approval. Record whether the next response is required from Rep or Admin. Resolved records Management's resolution; it never edits source values or restores a check approval.
+- Update has two deliberate stages: Review Update shows exact before/after values; Confirm Update requires an explicit checkbox and server token. Bind the token to actor, revision, source signature, chosen change and expiry. Reject stale, missing, repeated or wrong-actor confirmations. Preview must not mutate signed values.
+- Apply pending same-item controlled signed changes only with a finalised baseline, fresh replacement signed file and verified acceptance/date through the existing signed revision process. Preserve the original snapshot and score; create a new signed version and reopen checks. Already-approved changes can be confirmed as aligned, not applied again. Multiple pending changes stay in the existing batch workflow.
+- Rep permissions remain response-only on their assigned client/action. Admin replies are shared only within the assigned revision conversation; internal Management actions stay restricted. Reopened conversations can accept a response for the current order version without changing their original raised version or history.
+
+## Separate revision actions and rep responses — 14 November 2026
+
+- Each checklist item offers Matched and Revision. Revision raises one separate action below the review workspace, with a consistent two-column card, current/proposed details, request, assigned Rep or Management, optional due date, linked client evidence, response versions and decision history. Block duplicate open actions for the same item; keep each fix independent.
+- These clarification/correction actions may be raised while reviewing. They are not the signed-order change proposals that require finalised baseline assessment, replacement signed evidence and client acceptance. Responses and ticket resolution never overwrite signed values or mark a source check as matched.
+- Rep access to this workspace is read only except their assigned open revision response and response-specific evidence upload. Enforce the same assigned-client scope in the API. Rep responses append versions; only Management resolves actions. Internal Other attachments, stock evidence, operational approval data and management-only requests remain restricted. Client source documents and sanitised review progress are viewable.
+- Opening a revision blocks its readiness gate and clears the old gate approval; resolving it does not restore the approval automatically. Final Admin review requires all revision actions resolved. Signed-change-required actions need the approved same-item signed change before resolution.
+- Management has a read-only Preview Rep View; it does not impersonate or submit a rep response. Local server role identity remains a review adapter. Production authentication, real rep login and external notifications are not connected.
+
+## Matching review navigation and attachment selection — 14 November 2026
+
+- The seven internal top-bar headings exactly match the owner-defined sections and their order: Client and Site Details; Site Details; Grid and Design; Product Check; Inventory and STC Check; Pricing and Extras; Notes and Documents. Each opens only that section's checklist. Preserve the front register and the seven existing backend release gates.
+- Combined sections expose both applicable backend approvals; Client/Site/Notes reflect the shared Order approval. The eighth progress box counts the seven displayed sections and reaches 100% only when their required current approvals pass.
+- Attachments show four cards across on desktop in a horizontal scrolling strip, with responsive card widths. More files stay selectable by scrolling. Highlight the currently open file in dark Petrol with a Viewing label and accessible selected state; move the highlight when another file opens.
+
+## Owner-defined review checklist — 14 November 2026
+
+- Use the owner's 45 review prompts and exact section order in `docs/CLIENT-CHECKLIST.md`: Client and Site Details; Site Details; Grid and Design; Product Check; Inventory and STC Check; Pricing and Extras; Notes and Documents. These are checklist prompts, not replacement Sales CRM columns.
+- Preserve the seven readiness boxes and front register. Order contains identity, site, notes/documents; Grid contains Grid/design; Product contains signed product checks; STC and Inventory share a display heading but keep separate readiness and operational sources; Pricing and Extras share a heading but keep separate readiness.
+- Source comparison checks require separate attached evidence with page/section references. Do not assume STC Creator is the electrician. STC exports, Inventory exports and EV location/job-instruction files currently use the existing Other document label, with explicit review instructions; external ingestion and electrician assignment are not connected.
+- Optional unsold products permit Not Applicable only with a reason. Signed dates, file correctness and versioned product details remain part of the consolidated prompts. Final Review by Admin must be checked last, after all other items pass or have valid Not Applicable results. It does not submit the job.
+- Checklist schema changes and STC/Inventory/Extras source changes reopen the current documentary review; preserve all old snapshots and saved scores. Grid/design, STC, Inventory and the final Admin attestation are operational checks excluded from rep coaching.
+
+## Simplified internal crossover review — 14 November 2026
+
+- Seven horizontal section controls (Order, Grid, STC, Product, Inventory, Pricing, Extras) and an eighth overall progress box replace the lower approval list. Each current backend approval contributes one seventh; all seven equal 100%. Keep coaching score separate from readiness progress.
+- Remove the duplicate Source Document selector, Review V2 toolbar heading and manual Responsible Admin / Save Assignment form. Approval records the reviewer automatically when an owner is absent; preserve existing responsibility and decision history.
+- The source column ends at the large document viewer. Operational evidence belongs in the selected checking section; document tools and preserved revisions/history use collapsed drawers in that panel. No operational content below the source viewer.
+- Checklist changes and operational evidence save automatically. Incomplete documentary drafts persist without counting as assessed or approved. Explicit approvals, assessment finalisation and Yes-confirmed Submission remain deliberate and validated.
+- A clearly labelled fictional contract layout may be shown for review. It is not stored or selectable as source evidence and must never approve a real job. Preserve canonical field names and genuine attachment access.
+
 ## Source viewer and Grid review refinement — 12 November 2026
 
 - Make the source document the dominant desktop area (approximately 75%) and keep the checklist compact on the right. Stack on smaller screens; retain readable forms and a taller document viewport.

@@ -1,24 +1,35 @@
 import assert from 'node:assert/strict';
 import {createClients,updateClient,project} from './client-model.mjs';
-import {reviewScore,activeReview} from '../public/order-review-policy.js';
+import {reviewScore,activeReview,reviewItems,reviewSignature} from '../public/order-review-policy.js';
 import {blockers} from '../public/crossover-policy.js';
 import {validSourceDate} from './order-review-model.mjs';
 assert.ok(validSourceDate('2026-11-12',Date.parse('2026-11-11T23:00:00Z')));
 assert.equal(validSourceDate('2026-11-13',Date.parse('2026-11-11T23:00:00Z')),false);
 assert.equal(validSourceDate('2026-02-30'),false);
 const ctx={role:'management',actor:'Review Admin'};let r=createClients()[17];r.reviewRequired=true;r.fields.NMI='43123456789';
-r.documents=['Signed Contract','Identification','Electricity Bill','Grid + Meter File'].map((label,i)=>({id:'source-'+i,label,name:label+'.txt',bytes:100,type:'text/plain',at:'2026-10-23T00:00:00Z'}));
+r.documents=['Signed Contract','Identification','Electricity Bill','Grid + Meter File','Battery Location','Other','Other'].map((label,i)=>({id:'source-'+i,label,name:label+' '+i+'.txt',bytes:100,type:'text/plain',at:'2026-10-23T00:00:00Z'}));
+r.crossover={stc:{owner:'Admin',platform:'Bridgeselect',creator:'STC Creator',reference:'SAMPLE-STC',completedAt:'2026-10-23T00:00:00Z'}};
 r.gridReview={fields:{'Grid Status':'Grid Approved','Grid Provider':'Ausgrid',NMI:r.fields.NMI,'Approval Number':'SAMPLE-APPROVAL','Approval Date':'2026-10-23T00:00:00Z'},files:[]};
 const original=structuredClone(r.contracts[0]),act=(action,fields={})=>r=updateClient(r,{revision:r.revision,action,...fields},ctx);
 assert.match(blockers(r,'order')[0],/review/);
 act('review-contract-date',{documentId:'source-0',date:'2026-10-22'});act('review-start');const captured=structuredClone(activeReview(r).baseline);
-act('review-answer',{itemId:'grid-Approval Number',state:'Needs Fix',cause:'Rep Submission',note:'Operational approval source needs checking.'});
-assert.equal(activeReview(r).answers['grid-Approval Number'].cause,'Operational Work');
+act('review-draft',{itemId:'field-Legal Name',documentId:'source-1',location:'Page 1',note:''});
+assert.equal(activeReview(r).drafts['field-Legal Name'].location,'Page 1');
+assert.equal(activeReview(r).answers['field-Legal Name'],undefined);
+assert.equal(reviewScore(activeReview(r)).covered,0,'Autosaved drafts must not count as assessed or approved.');
+assert.equal(reviewItems(r).length,45);
+act('review-answer',{itemId:'grid-approval',state:'Needs Fix',cause:'Rep Submission',note:'Operational approval source needs checking.'});
+assert.equal(activeReview(r).answers['grid-approval'].cause,'Operational Work');
+assert.throws(()=>act('review-answer',{itemId:'final-admin',state:'Checked',documentId:'source-0',location:'Page 1'}),/every other item/);
+assert.throws(()=>act('review-answer',{itemId:'stc-electrician',state:'Checked',documentId:'source-5',location:'Page 1',comparisons:[{documentId:'source-5',location:'Page 1'}]}),/separate comparison source/);
 assert.throws(()=>act('review-answer',{itemId:activeReview(r).items[0].id,state:'Checked',location:'Page 1'}),/appropriate source/);
 const fault='field-Roof Type';
-for(const item of activeReview(r).items){const document=r.documents.find(d=>item.sources.includes(d.label));act('review-answer',{itemId:item.id,state:item.id===fault?'Needs Fix':'Checked',cause:'Unclear',note:item.id===fault?'Roof Type differs from the source.':'',documentId:document.id,location:'Page 1'});}
+for(const item of activeReview(r).items){const document=r.documents.find(d=>item.sources.includes(d.label));const issue=item.id===fault||item.id==='final-admin';act('review-answer',{itemId:item.id,state:issue?'Needs Fix':item.optional?'Not Applicable':'Checked',cause:'Unclear',note:issue?'Roof Type differs from the source.':item.optional?'Not sold / not applicable in this fixture.':'',documentId:document?.id,location:'Page 1',comparisons:(item.comparisons||[]).map(proof=>({documentId:r.documents.find(d=>d.id!==document?.id&&proof.sources.includes(d.label)&&(!proof.documentId||d.id===proof.documentId))?.id,location:'Page 1'}))});}
 assert.equal(reviewScore(activeReview(r)).score,null);assert.throws(()=>act('review-finalise'),/classify/);
 act('review-answer',{itemId:fault,state:'Needs Fix',cause:'Rep Submission',note:'Roof Type is incorrect in the submitted data.',documentId:'source-0',location:'Page 1'});
+act('review-draft',{itemId:'field-Legal Name',documentId:'source-1',location:'Page 2'});
+assert.throws(()=>act('review-finalise'),/Assess every item/,'Changing a checked draft must reopen its assessment.');
+act('review-answer',{itemId:'field-Legal Name',state:'Checked',documentId:'source-1',location:'Page 2',comparisons:[{documentId:'source-0',location:'Page 1'}]});
 act('review-finalise');const firstScore=activeReview(r).score;assert.ok(firstScore<100);assert.match(blockers(r,'order')[0],/Resolve/);
 assert.throws(()=>act('review-answer',{itemId:fault,state:'Checked',documentId:'source-0',location:'Page 1'}),/finalised/);
 act('review-request-change',{itemId:fault,value:'Tile',reason:'Match the replacement signed contract.'});const change=r.changes.at(-1);
@@ -32,5 +43,6 @@ assert.equal(r.fields['Roof Type'],'Tile');assert.equal(r.fields.Height,'Double'
 assert.match(blockers(r,'order')[0],/current source/);act('review-start');assert.equal(r.documentReview.rounds.length,2);assert.equal(reviewScore(activeReview(r)).covered,0);
 assert.throws(()=>updateClient(r,{action:'review-start',revision:r.revision},{role:'rep',rep:r.fields['Rep Name']}),/Management permission/);
 const rep=project(r,{role:'rep',rep:r.fields['Rep Name']});assert.equal(rep.documentReview,undefined);
-assert.equal(rep.submissionFeedback.score,firstScore);assert.ok(rep.submissionFeedback.issueLabels.includes('Roof Type'));
+assert.equal(rep.submissionFeedback.score,firstScore);assert.ok(rep.submissionFeedback.issueLabels.includes('Roof Check'));
+const signature=reviewSignature(r);r.crossover.stc.reference='CHANGED';assert.notEqual(reviewSignature(r),signature,'STC source changes must reopen documentary review.');
 console.log('Document review passed: source references, missing evidence, cause attribution, immutable score/baseline, revision evidence and acceptance, original preservation, new-version gating and role scope.');

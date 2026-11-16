@@ -2,6 +2,15 @@ import {randomUUID} from 'node:crypto';
 import {activeReview,reviewSignature,reviewItems,reviewScore} from '../public/order-review-policy.js';
 import {fromSydney,inputDate} from '../public/grid-model.js';
 const text=(v,max=2000)=>{if(typeof v!=='string'||v.length>max)throw Error('Enter a valid text value.');return v.trim();};
+const present=v=>v!==undefined&&v!==null&&v!==''&&(!Array.isArray(v)||v.length>0);
+function comparisonEvidence(r,item,body,checked){
+  return (item.comparisons||[]).map((required,index)=>{
+    const input=body.comparisons?.[index]||{},document=r.documents.find(d=>d.id===input.documentId&&d.bytes>0),location=text(input.location||'',200);
+    if(input.documentId&&(!document||!required.sources.includes(document.label)||(required.documentId&&document.id!==required.documentId)))throw Error('Select the correct comparison source for '+required.key+'.');
+    if(checked&&(!document||!location||document.id===body.documentId))throw Error('Attach a separate comparison source and page/section reference for '+required.key+'.');
+    return {documentId:document?.id||'',location};
+  });
+}
 export function updateOrderReview(r,b,ctx,event){
   if(ctx.role!=='management')throw Error('Management permission is required.');
   if(b.revision!==r.revision)throw Error('This order changed. Refresh before saving.');
@@ -20,19 +29,34 @@ export function updateOrderReview(r,b,ctx,event){
     r.fields['Signed Contract Date']=existing||b.date;r.contractEvidence={version:current.version,documentId:document.id,at,by:ctx.actor};
     document.orderVersion=current.version;
     event(r,ctx,'Document Review',`Signed Contract Date recorded from ${document.name}: ${b.date}. Original contract snapshot preserved.`);
+  }else if(b.action==='review-draft'){
+    if(!round||round.signature!==reviewSignature(r))throw Error('Start a current review first.');
+    if(round.finalizedAt)throw Error('This review is finalised.');
+    const item=round.items.find(i=>i.id===b.itemId);if(!item)throw Error('Unknown checklist item.');
+    const documentId=text(b.documentId||'',200);
+    if(documentId&&!r.documents.some(d=>d.id===documentId&&item.sources.includes(d.label)))throw Error('Select an appropriate attached source.');
+    round.drafts||={};round.drafts[item.id]={state:'Draft',documentId,location:text(b.location||'',200),note:text(b.note||''),cause:text(b.cause||'',100),comparisons:comparisonEvidence(r,item,b,false),at,by:ctx.actor};
+    delete round.answers[item.id];
+    event(r,ctx,'Document Review',`${item.label}: review draft saved; not approved.`);
   }else if(b.action==='review-answer'){
     if(!round||round.signature!==reviewSignature(r))throw Error('Start a current review first.');
     if(round.finalizedAt)throw Error('This review is finalised. Start a new review after a source correction.');
     const item=round.items.find(i=>i.id===b.itemId);if(!item)throw Error('Unknown checklist item.');
     if(!['Checked','Needs Fix','Not Applicable'].includes(b.state))throw Error('Choose a check result.');
+    if(['Checked','Not Applicable'].includes(b.state)&&(r.reviewCorrections||[]).some(c=>c.itemId===item.id&&c.status!=='Resolved'))throw Error('Resolve this revision before marking Matched.');
     const note=text(b.note||''),location=text(b.location||'',200),document=r.documents.find(d=>d.id===b.documentId&&d.bytes>0);
     if(b.state==='Checked'&&(!document||!item.sources.includes(document.label)||!location))throw Error('Attach/select the appropriate source and enter a page or section reference.');
     if(b.state==='Checked'&&document.label==='Signed Contract'&&(r.contractEvidence?.version!==current.version||r.contractEvidence.documentId!==document.id))throw Error('Record Signed Contract Date from the current signed source first, then use that same document for the checks.');
     if(b.state==='Checked'&&(item.value==null||item.value===''||(Array.isArray(item.value)&&!item.value.length)))throw Error('The recorded value is missing. Flag it for correction.');
+    if(b.state==='Checked'&&(item.invalid||(item.requiredValues||[]).some(key=>!present(item.value?.[key]))))throw Error('The required source values are missing or not complete. Flag this item for correction.');
+    const comparisons=comparisonEvidence(r,item,b,b.state==='Checked');
+    if(b.state==='Checked'&&comparisons.some(v=>r.documents.find(d=>d.id===v.documentId)?.label==='Signed Contract'&&(r.contractEvidence?.version!==current.version||r.contractEvidence.documentId!==v.documentId)))throw Error('Use the current verified signed contract for comparison.');
+    if(b.state==='Checked'&&item.id==='final-admin'&&(round.items.some(i=>i.id!=='final-admin'&&!['Checked','Not Applicable'].includes(round.answers[i.id]?.state))||(r.reviewCorrections||[]).some(c=>c.status!=='Resolved')))throw Error('Assess and resolve every other item before Final Review by Admin.');
     if(b.state==='Not Applicable'&&(!item.optional||!note))throw Error('Not Applicable is allowed only for optional items with a reason.');
     if(b.state==='Needs Fix'&&(!note||(item.scored!==false&&!['Rep Submission','Later Change','Review Correction','Unclear'].includes(b.cause))))throw Error('Explain the issue and classify its cause.');
-    const answer={state:b.state,note,location,documentId:document?.id||'',cause:b.state==='Needs Fix'?(item.scored===false?'Operational Work':b.cause):'',at,by:ctx.actor};
+    const answer={state:b.state,note,location,documentId:document?.id||'',comparisons,referenceMethod:b.referenceMethod==='manual-checkbox'?'manual-checkbox':'source-reference',cause:b.state==='Needs Fix'?(item.scored===false?'Operational Work':b.cause):'',at,by:ctx.actor};
     round.answers[item.id]=answer;
+    if(round.drafts)delete round.drafts[item.id];
     if(!round.firstFindings[item.id]||(b.state==='Needs Fix'&&round.firstFindings[item.id].state!=='Needs Fix'))round.firstFindings[item.id]=structuredClone(answer);
     else if(round.firstFindings[item.id].state==='Needs Fix'&&!round.finalizedAt&&b.state==='Needs Fix')round.firstFindings[item.id].cause=answer.cause;
     event(r,ctx,'Document Review',`${item.label}: ${b.state}${answer.cause?' · '+answer.cause:''}. ${note}`);
@@ -40,7 +64,7 @@ export function updateOrderReview(r,b,ctx,event){
     if(!round)throw Error('Start a review first.');
     if(round.finalizedAt)throw Error('This review is already finalised.');
     const score=reviewScore(round);
-    if(score.covered!==score.total||score.unclassified)throw Error('Assess every item and classify all issues before finalising the score.');
+    if(score.covered!==score.total||score.unclassified||round.items.some(i=>!round.answers[i.id]))throw Error('Assess every item and classify all issues before finalising the score.');
     round.finalizedAt=at;round.finalizedBy=ctx.actor;round.score=score.score;round.scoreBreakdown={...score,repIssues:Object.values(round.firstFindings).filter(v=>v.state==='Needs Fix'&&v.cause==='Rep Submission').length};
     event(r,ctx,'Document Review',`Review finalised. Baseline coaching score: ${score.score==null?'Not rateable':score.score+'/100'}. Equal-weight rubric; later changes and Not Applicable excluded.`);
   }else if(b.action==='review-request-change'){

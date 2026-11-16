@@ -7,6 +7,10 @@ let r=createClients()[17]; // Signed Battery Only order; no unverified racking q
 const original=structuredClone(r.contracts[0]),at=new Date(Date.now()-3600000).toISOString();
 const act=(action,extra={})=>{r=updateClient(r,{action,revision:r.revision,...extra},management);};
 assert.ok(r.contracts.length);assert.equal(ready(r),false);
+const unassigned=structuredClone(r);unassigned.crossover={reviews:{},interactions:[]};
+const assigned=updateClient(unassigned,{action:'crossover-check',key:'order',revision:unassigned.revision},management);
+assert.equal(assigned.crossover.order.owner,management.actor,'First approval records its reviewer without a manual assignment.');
+assert.ok(checkState(assigned,'order').green);
 assert.throws(()=>act('crossover-check',{key:'grid'}),/Grid approval/);
 act('crossover-save',{key:'order',evidence:{owner:'Admin Example'}});
 act('save-grid-review',{expectedGridUpdate:'',grid:{id:r.id,fields:{...r.fields,'Grid Status':'Grid Approved','Grid Applied Date':r.fields['Sales Date'],'Approval Number':'SAMPLE-REF','Approval Date':at,'Meter Applied':'Waiting','Payment Done':'Pending'},files:[],events:[]}});

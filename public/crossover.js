@@ -1,4 +1,5 @@
 import {mountOrderReview} from './order-review.js';
+import {mountRepReview} from './review-corrections.js';
 import {formatCrmDate,crmYears,watchCrmYear} from './crm-standards.js';
 import {CHECKS,CHECK_LABELS,currentOrder,productLines,checkState,ready,stampFor,submitted,workStatus,WORK_STATUSES,dateChecked,formatCheckedAt} from './crossover-policy.js';
 import {inputDate,fromSydney,timing} from './grid-model.js';
@@ -21,6 +22,7 @@ function release(r){const c=r.crossover||{},ok=submitted(r);return `<div class="
 export async function mountCrossover(panel,route){
   document.querySelector('main').classList.add('management-page','crossover-page');document.querySelector('.journey').hidden=true;document.querySelector('#next-section').hidden=true;
   const token=crypto.randomUUID();panel.dataset.crossoverMount=token;panel.innerHTML='<p class="mg-loading">Loading job handover records…</p>';
+  try{const session=await api('/api/session'),parts=route.split('/');if(panel.dataset.crossoverMount!==token)return;if(parts[1]&&(parts[2]==='rep'||session.role==='rep')){await mountRepReview(panel,parts[1],session);return;}}catch(error){panel.innerHTML=`<p class="mg-error">${esc(error.message)}</p>`;return;}
   try{const data=await api('/api/clients');if(panel.dataset.crossoverMount!==token)return;const parts=route.split('/'),r=data.records.find(r=>r.id===parts[1]);if(parts[1]&&!r)throw Error('Job not found or outside your permitted records.');if(r)mountOrderReview(panel,r,detail,confirmSubmission);else register(panel,data.records.filter(r=>currentOrder(r)));}catch(error){if(panel.dataset.crossoverMount===token)panel.innerHTML=`<p class="mg-error">${esc(error.message)}</p>`;}
 }
 function register(panel,records){

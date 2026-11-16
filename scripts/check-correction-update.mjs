@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import {createClients,updateClient} from './client-model.mjs';
+import {activeReview,reviewBlockers} from '../public/order-review-policy.js';
+const admin={role:'management',actor:'Update Test Admin'};let r=createClients()[17];r.reviewRequired=true;r.fields.NMI='43123456789';
+r.documents=['Signed Contract','Identification','Electricity Bill','Grid + Meter File','Battery Location','Other','Other'].map((label,i)=>({id:'source-'+i,label,name:label+' '+i+'.txt',bytes:100,type:'text/plain'}));
+r.crossover={stc:{platform:'Bridgeselect',creator:'Creator',reference:'SAMPLE-STC',completedAt:'2026-10-23T00:00:00Z'}};
+r.gridReview={fields:{'Grid Status':'Grid Approved','Grid Provider':'Ausgrid',NMI:r.fields.NMI,'Approval Number':'SAMPLE','Approval Date':'2026-10-23T00:00:00Z'},files:[]};
+const original=structuredClone(r.contracts[0]),act=(action,body={})=>r=updateClient(r,{action,revision:r.revision,...body},admin);
+act('review-contract-date',{documentId:'source-0',date:'2026-10-22'});act('review-start');
+for(const item of activeReview(r).items){const source=r.documents.find(d=>item.sources.includes(d.label));act('review-answer',{itemId:item.id,state:item.optional?'Not Applicable':'Checked',documentId:source?.id,location:'Page 1',note:item.optional?'Not applicable to the signed fixture.':'',comparisons:(item.comparisons||[]).map(proof=>({documentId:r.documents.find(d=>d.id!==source?.id&&proof.sources.includes(d.label)&&(!proof.documentId||proof.documentId===d.id))?.id,location:'Page 1'}))});}
+act('review-finalise');const originalScore=activeReview(r).score;
+act('correction-create',{confirmed:true,itemId:'field-Height',request:'Later height correction.',assignedTo:'Rep',requiresSignedChange:true});const correctionId=r.reviewCorrections[0].id;
+act('review-request-change',{itemId:'field-Height',value:'Double',reason:'Revised signed site details.'});const changeId=r.changes.at(-1).id;
+r.documents.push({id:'replacement',label:'Signed Contract',name:'Replacement.txt',bytes:100,type:'text/plain'});
+const plan={correctionId,changeId,documentId:'replacement',signedDate:'2026-10-23',acceptanceReference:'Verified replacement acceptance',acceptanceConfirmed:true,resolution:'Accepted revised height.'};
+assert.throws(()=>act('correction-prepare-update',{...plan,acceptanceConfirmed:false}),/acceptance/);
+act('correction-prepare-update',plan);let confirmation=r.reviewCorrections[0].updateConfirmation;
+assert.equal(confirmation.before,'Single');assert.equal(confirmation.after,'Double');assert.equal(r.contracts.length,1,'Step one must not apply a source change.');
+assert.throws(()=>act('correction-confirm-update',{correctionId,token:confirmation.token,confirmed:false}),/confirmation/);
+act('add-note',{note:'A new event invalidates the prepared revision.'});
+assert.throws(()=>act('correction-confirm-update',{correctionId,token:confirmation.token,confirmed:true}),/stale/);
+act('correction-prepare-update',plan);confirmation=r.reviewCorrections[0].updateConfirmation;
+act('correction-confirm-update',{correctionId,token:confirmation.token,confirmed:true});
+assert.equal(r.fields.Height,'Double');assert.equal(r.contracts.length,2);assert.equal(r.contracts.at(-1).version,2);assert.deepEqual(r.contracts[0],original);assert.equal(r.reviewCorrections[0].status,'Resolved');assert.equal(activeReview(r).score,originalScore);assert.match(reviewBlockers(r,'order')[0],/current source/);
+console.log('Two-step correction updates passed: no mutation on preview, actor/version/revision confirmation, acceptance evidence, immutable originals, new order version and rechecking.');

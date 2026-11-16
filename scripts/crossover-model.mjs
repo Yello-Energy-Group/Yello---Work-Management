@@ -65,7 +65,8 @@ export function updateCrossover(record,body,context,event){
     }else if(body.action==='crossover-check'){
       if(!CHECKS.includes(body.key))throw Error('Choose a valid check.');
       const errors=blockers(record,body.key);if(errors.length)throw Error(errors.join(' '));
-      if(!c.order?.owner)throw Error('Assign the responsible Admin in Order Details first.');
+      // Responsibility follows the authenticated reviewer; no separate assignment form is required.
+      if(!c.order?.owner)c.order={...c.order,owner:context.actor};
       c.reviews[body.key]={stamp:stampFor(record,body.key),at:new Date().toISOString(),by:context.actor};
       event(record,context,'Job Crossover',`${body.key} checked and approved for order version ${currentOrder(record).version}.`);
     }else if(body.action==='crossover-pack'){

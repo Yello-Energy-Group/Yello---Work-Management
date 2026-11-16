@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import {updateCrossover,reconcileRelease} from './crossover-model.mjs';
 import {updateOrderReview} from './order-review-model.mjs';
+import {updateCorrection,correctionProjection,repDocuments} from './review-corrections.mjs';
+import {reviewSignature} from '../public/order-review-policy.js';
 import { sampleOrders } from '../public/sample-orders.js';
 export const PAGES=['Client Details','Project Details','Grid Details','Documents','Products','Price','Outcome','Activity Log'];
 export const DOCUMENT_LABELS=['Electricity Bill','Meter Pic','Site Legend','PV Design','Battery Location','Build Plan','Interval Data','Signed Contract','Grid + Meter File','Single Line Diagram (SLD)','Voltage Rise Calculation (VRC)','Identification','Strata Approval','Landlord Approval','Other'];
@@ -48,6 +50,9 @@ export function project(record,context){
   if(context.role!=='management')result.changes=result.changes.filter(c=>c.status==='Approved');
   if(context.role!=='management'){delete result.crossover;delete result.gridReview;}
   if(context.role!=='management'){
+    result.documents=repDocuments(record);
+    result.reviewCorrections=correctionProjection(record);
+    result.reviewProgress=(record.documentReview?.rounds.at(-1)?.items||[]).map(item=>({id:item.id,label:item.label,section:item.section,state:(record.reviewCorrections||[]).some(c=>c.itemId===item.id&&c.status!=='Resolved')?'Revision':record.documentReview.rounds.at(-1).signature!==reviewSignature(record)?'Recheck':record.documentReview.rounds.at(-1).answers[item.id]?.state||'Pending'}));
     const first=record.documentReview?.rounds.find(v=>v.finalizedAt);
     if(first)result.submissionFeedback={saleId:record.fields['Sale ID'],version:first.version,score:first.score,reviewedAt:first.finalizedAt,issueLabels:first.items.filter(i=>first.firstFindings[i.id]?.state==='Needs Fix'&&first.firstFindings[i.id].cause==='Rep Submission').map(i=>i.label)};
     delete result.documentReview;delete result.revisionShares;
@@ -57,6 +62,8 @@ export function project(record,context){
 }
 export function updateClient(record,body,context){
   if(!canAccess(record,context))throw Error('Access denied.');
+  if(context.role==='rep'&&body.action!=='correction-respond')throw Error('Management permission is required. Rep access is view only; edit only your assigned revision response.');
+  if(body.action?.startsWith('correction-')){const result=updateCorrection(structuredClone(record),body,context,event);reconcileRelease(result,context,event);return result;}
   if(body.action?.startsWith('review-')){const result=updateOrderReview(structuredClone(record),body,context,event);validateFields(result.fields);reconcileRelease(result,context,event);return result;}
   if(body.action==='save-grid-review'||body.action?.startsWith('crossover-'))return updateCrossover(structuredClone(record),body,context,event);
   if(body.revision!==record.revision)throw Error('This record changed. Refresh it before saving.');

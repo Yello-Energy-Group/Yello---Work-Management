@@ -3,6 +3,7 @@ import {spawn} from 'node:child_process';
 import path from 'node:path';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {CHECKS,productLines} from '../public/crossover-policy.js';
+import {directMatchRequest} from '../public/direct-match.js';
 const base='http://127.0.0.1:3115';
 const directory=path.resolve('output',`api-test-${Date.now()}`);
 const child=spawn(process.execPath,['scripts/serve.mjs'],{env:{...process.env,PORT:'3115',WORK_CRM_REVIEW_DATA_DIR:directory},stdio:'pipe',windowsHide:true});
@@ -36,13 +37,16 @@ try{
   await changeJob('crossover-save',{key:'stc',evidence:{owner:'STC Admin',creator:'STC Creator',platform:'Bridgeselect',reference:'SAMPLE-STC',completedAt}});
   await changeJob('crossover-save',{key:'inventory',evidence:{owner:'Warehouse Admin',reference:'SAMPLE-PO',status:'Prepared',completedAt,lines:productLines(job).map(p=>({quantity:p.quantity,packed:p.quantity,matched:true}))}});
   await changeJob('crossover-save',{key:'extras',evidence:{items:job.contracts.at(-1).extras.map(()=>({organised:true,owner:'Extras Admin',reference:'SAMPLE-EXTRA',completedAt}))}});
-  for(const label of ['Identification','Electricity Bill','Grid + Meter File']){
+  for(const label of ['Identification','Electricity Bill','Grid + Meter File','Battery Location','Other','Other']){
     const result=await request('/api/clients/preview-18/documents',{revision:job.revision,label,name:'Sample review evidence.txt',content:Buffer.from('Fictional source for API review testing.').toString('base64')});assert.equal(result.status,200);job=result.value.record;
   }
   await changeJob('save-profile',{page:'Grid Details',fields:{NMI:'43123456789'}});
   await changeJob('review-contract-date',{date:'2026-10-22',documentId:job.documents.find(d=>d.label==='Signed Contract').id});
   await changeJob('review-start');
-  for(const item of job.documentReview.rounds.at(-1).items){const source=job.documents.find(d=>item.sources.includes(d.label));await changeJob('review-answer',{itemId:item.id,state:'Checked',documentId:source.id,location:'Sample section 1',note:'API fixture reviewed'});}
+  const legalItem=job.documentReview.rounds.at(-1).items.find(i=>i.id==='field-Legal Name'),directMatched=directMatchRequest(job,legalItem,job.documents.find(d=>d.label==='Identification').id);
+  await changeJob(directMatched.action,directMatched);assert.equal((await request('/api/clients/preview-18')).value.record.documentReview.rounds.at(-1).answers[legalItem.id].state,'Checked');
+  await changeJob('review-draft',{itemId:legalItem.id,note:'Checkbox unchecked.'});assert.equal(job.documentReview.rounds.at(-1).answers[legalItem.id],undefined);
+  for(const item of job.documentReview.rounds.at(-1).items){const source=job.documents.find(d=>item.sources.includes(d.label));await changeJob('review-answer',{itemId:item.id,state:item.optional?'Not Applicable':'Checked',documentId:source?.id,location:'Sample section 1',note:item.optional?'Not sold or not applicable in this fixture.':'API fixture reviewed',comparisons:(item.comparisons||[]).map(proof=>({documentId:job.documents.find(d=>d.id!==source?.id&&proof.sources.includes(d.label)&&(!proof.documentId||d.id===proof.documentId))?.id,location:'Sample comparison section 1'}))});}
   await changeJob('review-finalise');
   for(const key of CHECKS)await changeJob('crossover-check',{key});
   assert.equal((await request('/api/job-management')).value.records.length,0,'All green must not automatically release');
@@ -63,13 +67,34 @@ try{
   assert.deepEqual((await request('/api/job-management')).value.records.map(r=>r.id),['preview-18']);
   assert.equal(job.crossover.interactions.length,2);assert.ok(job.crossover.interactions.every(i=>i.status.startsWith('Queued')));
   assert.equal((await request('/api/clients/preview-18',{revision:job.revision,action:'crossover-submit',token,confirmed:true})).status,400);
+  await changeJob('correction-create',{confirmed:true,itemId:'field-Height',request:'Confirm updated height.',assignedTo:'Rep',requiresSignedChange:true});const updateCorrectionId=job.reviewCorrections.at(-1).id;
+  await changeJob('review-request-change',{itemId:'field-Height',value:'Double',reason:'Accepted signed height correction.'});const updateChangeId=job.changes.at(-1).id,originalSnapshot=structuredClone(job.contracts[0]);
+  const replacementFile=await request('/api/clients/preview-18/documents',{revision:job.revision,label:'Signed Contract',name:'Replacement signed source.txt',content:Buffer.from('Fictional replacement signed source for API testing.').toString('base64')});assert.equal(replacementFile.status,200);job=replacementFile.value.record;
+  await changeJob('correction-prepare-update',{correctionId:updateCorrectionId,changeId:updateChangeId,documentId:job.documents.at(-1).id,signedDate:'2026-10-23',acceptanceReference:'Verified API fixture replacement acceptance',acceptanceConfirmed:true,resolution:'Accepted height revision.'});
+  const updateToken=job.reviewCorrections.at(-1).updateConfirmation.token;assert.equal(job.contracts.length,1,'Update preview cannot apply the new version.');
+  assert.equal((await request('/api/clients/preview-18',{revision:job.revision,action:'correction-confirm-update',correctionId:updateCorrectionId,token:'wrong',confirmed:true})).status,400);
+  await changeJob('correction-confirm-update',{correctionId:updateCorrectionId,token:updateToken,confirmed:true});assert.equal(job.fields.Height,'Double');assert.deepEqual(job.contracts[0],originalSnapshot);assert.equal(job.contracts.length,2);
   await changeJob('save-profile',{page:'Project Details',fields:{'Site Visit Notes':'API test changed access'}});
   assert.equal((await request('/api/job-management')).value.records.length,0);assert.ok(job.crossover.interactions.every(i=>i.status.startsWith('Cancelled')));
+  let revisionJob=(await request('/api/clients/preview-13')).value.record;
+  const internal=await request('/api/clients/preview-13/documents',{revision:revisionJob.revision,label:'Other',name:'Internal stock source.txt',content:Buffer.from('Internal stock counts must not be shown to the rep.').toString('base64')});assert.equal(internal.status,200);revisionJob=internal.value.record;const internalId=revisionJob.documents.at(-1).id;
+  let correctionResult=await request('/api/clients/preview-13',{revision:revisionJob.revision,action:'review-start'});assert.equal(correctionResult.status,200);revisionJob=correctionResult.value.record;
+  correctionResult=await request('/api/clients/preview-13',{revision:revisionJob.revision,action:'correction-create',confirmed:true,itemId:'field-Roof Type',request:'Confirm the roof against the source.',assignedTo:'Rep'});assert.equal(correctionResult.status,200);revisionJob=correctionResult.value.record;const correctionId=revisionJob.reviewCorrections[0].id;
+  correctionResult=await request('/api/clients/preview-13',{revision:revisionJob.revision,action:'correction-message',correctionId,message:'Please confirm the roof using the site file.',waitingFor:'Rep'});assert.equal(correctionResult.status,200);revisionJob=correctionResult.value.record;
   const repChild=spawn(process.execPath,['scripts/serve.mjs'],{env:{...process.env,PORT:'3116',WORK_CRM_REVIEW_DATA_DIR:directory,WORK_CRM_REVIEW_ROLE:'rep'},stdio:'pipe',windowsHide:true});
   try{
     const repBase='http://127.0.0.1:3116';let repReady=false;for(let i=0;i<40;i++){try{repReady=(await fetch(repBase+'/api/session')).ok;if(repReady)break;}catch{}await new Promise(r=>setTimeout(r,100));}assert.ok(repReady);
     const repList=await(await fetch(repBase+'/api/clients')).json();assert.ok(repList.records.length<25);assert.ok(repList.records.every(r=>r.fields['Rep Name']==='Jack'));
     assert.equal((await fetch(repBase+'/api/job-management')).status,403);
+    let repRecord=await(await fetch(repBase+'/api/clients/preview-13')).json();repRecord=repRecord.record;assert.ok(!repRecord.documents.some(d=>d.id===internalId));assert.equal(repRecord.reviewCorrections[0].id,correctionId);
+    assert.equal((await fetch(repBase+'/api/clients/preview-13/documents/'+internalId)).status,404);
+    const repPost=async(path,body)=>{const response=await fetch(repBase+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:repRecord.revision,...body})});return {status:response.status,value:await response.json()};};
+    assert.equal((await repPost('/api/clients/preview-13',{action:'save-profile',page:'Project Details',fields:{'Roof Type':'Metal'}})).status,400);
+    assert.equal((await repPost('/api/clients/preview-13',{action:'correction-message',correctionId,message:'Pretend Admin',waitingFor:'Admin'})).status,400);
+    assert.equal((await repPost('/api/clients/preview-13',{action:'correction-prepare-update',correctionId,changeId:'fake',resolution:'Rep update'})).status,400);
+    assert.equal((await repPost('/api/clients/preview-13/documents',{label:'Other',name:'Unscoped.txt',content:Buffer.from('Unscoped').toString('base64')})).status,400);
+    const repUpload=await repPost('/api/clients/preview-13/documents',{label:'Other',correctionId,name:'Rep clarification.txt',content:Buffer.from('Fictional rep source clarification.').toString('base64')});assert.equal(repUpload.status,200);repRecord=repUpload.value.record;const responseFile=repRecord.documents.at(-1);assert.equal(responseFile.responseForCorrectionId,correctionId);
+    const reply=await repPost('/api/clients/preview-13',{action:'correction-respond',correctionId,response:'The original roof type is correct.',proposed:revisionJob.fields['Roof Type'],evidenceIds:[responseFile.id],status:'Resolved'});assert.equal(reply.status,200);assert.equal(reply.value.record.reviewCorrections[0].status,'Responded');assert.equal(reply.value.record.reviewCorrections[0].messages.length,1);assert.equal(reply.value.record.reviewCorrections[0].waitingFor,'Admin');assert.deepEqual(reply.value.record.contracts,revisionJob.contracts);
     const forged=await fetch(repBase+'/api/clients/preview-13',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:signed.revision,role:'management',actor:'Forged Manager',action:'decide-change',changeId:'fake',decision:'Approved'})});assert.notEqual(forged.status,200);assert.match((await forged.json()).error,/Management permission/);
   }finally{repChild.kill();}
   console.log('Client API checks passed: shared history, file evidence, permissions, seven-stage YES/NO gating, queued channels, persisted 24-hour reminder catch-up without restart duplicates, and stale handover withdrawal.');

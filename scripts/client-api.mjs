@@ -8,6 +8,7 @@ import {reconcileRelease,processCrossoverReminders} from './crossover-model.mjs'
 import {submitted} from '../public/crossover-policy.js';
 import {pdfPreview} from './pdf-preview.mjs';
 import {setTimeout as pause} from 'node:timers/promises';
+import {canRespond,repDocuments} from './review-corrections.mjs';
 const directory=process.env.WORK_CRM_REVIEW_DATA_DIR||fileURLToPath(new URL('../output/client-review/',import.meta.url));
 const statePath=path.join(directory,'clients.json');
 // Local review identity is configured by the server, never by a browser field.
@@ -68,11 +69,13 @@ export async function handleClients(request,response,url){
     const match=url.pathname.match(/^\/api\/(clients|rep-clients)(?:\/([^/]+))?(?:\/documents(?:\/([^/]+))?)?$/);
     if(!match){json(response,404,{error:'Not found.'});return true;}
     const [,kind,id,docId]=match;
-    const view=kind==='rep-clients'?{...context,role:'rep'}:context;
+    let view=kind==='rep-clients'?{...context,role:'rep'}:context;
     if(!id){if(request.method!=='GET'){json(response,405,{error:'Client creation is only allowed through lead generation.'});return true;}json(response,200,{records:records.map(r=>project(r,view)).filter(Boolean)});return true;}
     const record=records.find(r=>r.id===id);
+    if(context.role==='management'&&url.searchParams.get('view')==='rep'&&record&&request.method==='GET')view={...context,role:'rep',rep:record.fields['Rep Name']};
     if(!record||!canAccess(record,view)){json(response,404,{error:'Client not found or outside your permitted records.'});return true;}
     if(request.method==='GET'){
+      if(docId&&view.role==='rep'&&!repDocuments(record).some(d=>d.id===docId)){json(response,404,{error:'File not available in the rep view.'});return true;}
       if(docId&&url.searchParams.has('preview')){
         const document=record.documents.find(d=>d.id===docId);if(!document||document.type!=='application/pdf')throw Error('Choose an attached PDF.');
         const mode=url.searchParams.get('preview');if(!['info','page'].includes(mode))throw Error('Invalid preview request.');
@@ -90,6 +93,8 @@ export async function handleClients(request,response,url){
     const job=queue.then(async()=>{
       const current=records.find(r=>r.id===id);let updated;
       if(url.pathname.endsWith('/documents')){
+        const repUpload=context.role==='rep';
+        if(repUpload&&(!canRespond(current,current.reviewCorrections?.find(c=>c.id===body.correctionId),context)||body.label!=='Other'||body.gridFileId))throw Error('Rep uploads are limited to evidence for their assigned open revision response.');
         if(body.revision!==current.revision)throw Error('This record changed. Refresh before uploading.');
         if(!DOCUMENT_LABELS.includes(body.label))throw Error('Choose an approved document label.');
         if(typeof body.content!=='string'||!/^[A-Za-z0-9+/]*={0,2}$/.test(body.content))throw Error('Invalid file content.');
@@ -100,6 +105,7 @@ export async function handleClients(request,response,url){
         if(body.gridFileId&&(!gridSource||(body.label==='Grid + Meter File'&&gridSource.group!=='grid')))throw Error('Choose a genuine Grid source attachment.');
         const fileId=randomUUID();await writeFile(path.join(directory,fileId),bytes);
         updated=structuredClone(current);updated.documents.push({id:fileId,label:body.label,name,type,bytes:bytes.length,at:new Date().toISOString()});
+        if(repUpload)updated.documents.at(-1).responseForCorrectionId=body.correctionId;
         if(gridSource)updated.documents.at(-1).gridSourceFileId=gridSource.id;
         event(updated,context,'Document',`${body.label} attached: ${name}.`);
       }else updated=updateClient(current,body,context);
